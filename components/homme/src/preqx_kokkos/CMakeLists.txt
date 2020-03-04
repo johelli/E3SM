@@ -197,7 +197,7 @@ SET(PREQX_DEPS
   ${PREQX_DEPS_CXX}
 )
 
-SET(EXEC_SOURCES ${PREQX_DEPS} ${SRC_DIR}/prim_main.F90)
+SET(EXEC_SOURCES ${PREQX_DEPS} ${SRC_DIR}/prim_main.F90 ${PREQX_SRCS_ZOLTAN})
 
 # Set up defaults if they are not given
 IF (NOT PREQX_NP)
@@ -220,7 +220,7 @@ IF (NOT QSIZE_D)
   SET (QSIZE_D 4)
 ENDIF ()
 # for some of matt's old scripts which use preqx_qsize_d
-IF (PREQX_QSIZE_D)      
+IF (PREQX_QSIZE_D)
   SET (QSIZE_D ${PREQX_QSIZE_D})
 ENDIF ()
 

@@ -85,16 +85,66 @@ void zoltan_partition_problem(
   size_t numGlobalCoords = *nelem;
 
 
+//  std::cout << "HI!" << std::endl;
+
+
+
   Teuchos::RCP<const Teuchos::Comm<int> > tcomm =
       Teuchos::RCP<const Teuchos::Comm<int> > (new Teuchos::MpiComm<int> (comm));
 
+  tcomm->barrier();
+
+//  std::cout << "HI!" << std::endl;
+//  printf("\nHI!\n");
+
+  tcomm->barrier();
+
   RCP<const map_t> map = rcp (new map_t (numGlobalCoords, 0, tcomm));
 
-  typedef Tpetra::CrsGraph<zlno_t, zgno_t, znode_t> tcrsGraph_t;
-  RCP<tcrsGraph_t> TpetraCrsGraph(new tcrsGraph_t (map, 0));
+//  typedef Tpetra::CrsGraph<zlno_t, zgno_t, znode_t> tcrsGraph_t;
+//  RCP<tcrsGraph_t> TpetraCrsGraph(new tcrsGraph_t (map, 0));
 
   const zlno_t numMyElements = map->getNodeNumElements ();
   const zgno_t myBegin = map->getGlobalElement (0);
+
+
+
+
+  size_t maxRowInd = 0;
+  for (zlno_t lclRow = 0; lclRow < numMyElements; ++lclRow) {
+    const zgno_t gblRow = map->getGlobalElement (lclRow);
+    zgno_t begin = xadj[gblRow];
+    zgno_t end = xadj[gblRow + 1];
+
+    maxRowInd = (end - begin > maxRowInd) ? end - begin : maxRowInd;
+  }
+
+  tcomm->barrier();
+
+//  printf("\nMaxRowInd: %zu \n", maxRowInd);
+
+  tcomm->barrier();
+
+  typedef Tpetra::CrsGraph<zlno_t, zgno_t, znode_t> tcrsGraph_t;
+  RCP<tcrsGraph_t> TpetraCrsGraph(new tcrsGraph_t (map, maxRowInd, Tpetra::StaticProfile));
+
+
+//  std::cout << "\nNumMyElements: " << numMyElements
+//        << " myBegin: " << myBegin
+//        << " numGlobalCoords: " << numGlobalCoords
+//        << " nelem: " << *nelem << std::endl;
+
+//  printf("\nNumMyElements: %d myBegin: %d numGlobalCoords: %zu nelem: %d\n", numMyElements, myBegin, numGlobalCoords, *nelem);
+
+  tcomm->barrier();
+
+
+
+
+
+
+
+
 
   for (zlno_t lclRow = 0; lclRow < numMyElements; ++lclRow) {
     const zgno_t gblRow = map->getGlobalElement (lclRow);
@@ -104,6 +154,8 @@ void zoltan_partition_problem(
     TpetraCrsGraph->insertGlobalIndices(gblRow, indices);
   }
   TpetraCrsGraph->fillComplete ();
+
+//  return;
 
   RCP<const tcrsGraph_t> const_data = rcp_const_cast<const tcrsGraph_t>(TpetraCrsGraph);
   typedef Tpetra::MultiVector<zscalar_t, zlno_t, zgno_t, znode_t> tMVector_t;
@@ -174,7 +226,15 @@ void zoltan_partition_problem(
     zoltan2_parameters.set("algorithm", "hsfc");
     break;
   case 11:
-    zoltan2_parameters.set("algorithm", "patoh");
+//    zoltan2_parameters.set("algorithm", "patoh");
+    zoltan2_parameters.set("algorithm", "hier");
+    zoltan2_parameters.set("Machine_Optimization_Level", 10);
+    {
+      Teuchos::ParameterList &zparams =
+        zoltan2_parameters.sublist("zoltan_parameters",false);
+      zparams.set("LB_METHOD", "hier");
+//      zparams.set("LB_APPROACH", "REPARTITION");
+    }
     break;
   case 12:
     zoltan2_parameters.set("algorithm", "zoltan");
@@ -528,7 +588,7 @@ void zoltan_mapping_problem(
     }
   }
 
-  ArrayRCP<int> initial_part_ids(result_parts, 0,*nelem, false);
+  ArrayRCP<int> initial_part_ids(result_parts, 0, *nelem, false);
   Zoltan2::PartitioningSolution<adapter_t> partitioning_solution(env, global_comm, 0);
   partitioning_solution.setParts(initial_part_ids);
 
@@ -539,7 +599,8 @@ void zoltan_mapping_problem(
   if (*mapmethod >= 2){
     //the optimization parameters that are specific to architecture is set here.
     //this is for BGQ
-    problemParams.set("Machine_Optimization_Level", *mapmethod - 2);
+    //problemParams.set("Machine_Optimization_Level", *mapmethod - 2);
+    problemParams.set("Machine_Optimization_Level", 10);
     //problemParams.set("machine_coord_transformation", "EIGNORE");
   }
 
@@ -574,21 +635,78 @@ void zoltan_mapping_problem(
       problemParams.set("reduce_best_mapping", false);
     }
   }
+
   env->timerStart(Zoltan2::MACRO_TIMERS, "MappingProblemCreate");
+
   Zoltan2::MappingProblem<adapter_t> serial_map_problem(
       ia.getRawPtr(),
       &problemParams,
       global_comm,
       &partitioning_solution);
 
-
-
   env->timerStop(Zoltan2::MACRO_TIMERS, "MappingProblemCreate");
-  serial_map_problem.solve(true);
-  Zoltan2::MappingSolution<adapter_t> *msoln3 = serial_map_problem.getSolution();
-  int *parts =  (int *)msoln3->getPartListView();
+
+//  serial_map_problem.solve(true);
+
+//  Zoltan2::MappingSolution<adapter_t> *msoln3 = serial_map_problem.getSolution();
+//  int *parts =  (int *)msoln3->getPartListView();
+
+  int *parts = (int *)partitioning_solution.getPartListView();
 
   //timer->printAndResetToZero();
+
+  //then shift the results for fortran base.
+//  const int fortran_shift = 1;
+//  for (zlno_t lclRow = 0; lclRow < numMyElements; ++lclRow) {
+//    int proc = parts[lclRow];
+//    result_parts[lclRow] = proc + fortran_shift;
+//  }
+
+
+  typedef Zoltan2::EvaluatePartition<adapter_t> qualityp_t;
+  typedef Zoltan2::EvaluateMapping<adapter_t> qualitym_t;
+
+
+  // Partitioning Solution, Partitioning Evaluation
+/*  Teuchos::RCP<qualityp_t> metricObject_part =
+      rcp(new qualityp_t(ia.getRawPtr(),
+                        &problemParams,
+//                        global_comm,
+                        partitioning_solution));
+  //, serial_map_problem.getMachine().getRawPtr()));
+
+  if (global_comm->getRank() == 0){
+    std::cout << "\nQuality of Default: \n";
+    metricObject_part->printMetrics(std::cout);
+  }
+*/
+  // Partitioning Solution, Mapping Evaluation
+  Teuchos::RCP<qualitym_t> metricObject_premap =
+      rcp(new qualitym_t(ia.getRawPtr(),
+                        &problemParams,
+                        global_comm,
+                        &partitioning_solution,
+                        serial_map_problem.getMachine().getRawPtr()));
+
+  if (global_comm->getRank() == 0){
+    std::cout << "\nQuality of Part Solution: \n";
+    metricObject_premap->printMetrics(std::cout);
+  }
+
+
+  // Mapping Solution, Mapping Evaluation
+/*  Teuchos::RCP<qualitym_t> metricObject_map =
+      rcp(new qualitym_t(ia.getRawPtr(),
+                        &problemParams,
+                        global_comm,
+                        msoln3,
+                        serial_map_problem.getMachine().getRawPtr()));
+
+  if (global_comm->getRank() == 0){
+    std::cout << "\nQuality of Map Solution: \n";
+    metricObject_map->printMetrics(std::cout);
+  }
+*/
 
   //then shift the results for fortran base.
   const int fortran_shift = 1;
@@ -596,6 +714,10 @@ void zoltan_mapping_problem(
     int proc = parts[lclRow];
     result_parts[lclRow] = proc + fortran_shift;
   }
+
+
+
+
 /*
   typedef Zoltan2::EvaluateMapping<adapter_t> quality_t;
   Teuchos::RCP<quality_t> metricObject_1 = rcp(new quality_t(ia.getRawPtr(),&problemParams,tcomm,msoln3,
