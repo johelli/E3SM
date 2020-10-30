@@ -84,31 +84,13 @@ void zoltan_partition_problem(
   typedef Tpetra::Map<zlno_t, zgno_t, znode_t> map_t;
   size_t numGlobalCoords = *nelem;
 
-
-//  std::cout << "HI!" << std::endl;
-
-
-
   Teuchos::RCP<const Teuchos::Comm<int> > tcomm =
       Teuchos::RCP<const Teuchos::Comm<int> > (new Teuchos::MpiComm<int> (comm));
 
-  tcomm->barrier();
-
-//  std::cout << "HI!" << std::endl;
-//  printf("\nHI!\n");
-
-  tcomm->barrier();
-
   RCP<const map_t> map = rcp (new map_t (numGlobalCoords, 0, tcomm));
-
-//  typedef Tpetra::CrsGraph<zlno_t, zgno_t, znode_t> tcrsGraph_t;
-//  RCP<tcrsGraph_t> TpetraCrsGraph(new tcrsGraph_t (map, 0));
 
   const zlno_t numMyElements = map->getNodeNumElements ();
   const zgno_t myBegin = map->getGlobalElement (0);
-
-
-
 
   size_t maxRowInd = 0;
   for (zlno_t lclRow = 0; lclRow < numMyElements; ++lclRow) {
@@ -119,32 +101,8 @@ void zoltan_partition_problem(
     maxRowInd = (end - begin > maxRowInd) ? end - begin : maxRowInd;
   }
 
-  tcomm->barrier();
-
-//  printf("\nMaxRowInd: %zu \n", maxRowInd);
-
-  tcomm->barrier();
-
   typedef Tpetra::CrsGraph<zlno_t, zgno_t, znode_t> tcrsGraph_t;
   RCP<tcrsGraph_t> TpetraCrsGraph(new tcrsGraph_t (map, maxRowInd, Tpetra::StaticProfile));
-
-
-//  std::cout << "\nNumMyElements: " << numMyElements
-//        << " myBegin: " << myBegin
-//        << " numGlobalCoords: " << numGlobalCoords
-//        << " nelem: " << *nelem << std::endl;
-
-//  printf("\nNumMyElements: %d myBegin: %d numGlobalCoords: %zu nelem: %d\n", numMyElements, myBegin, numGlobalCoords, *nelem);
-
-  tcomm->barrier();
-
-
-
-
-
-
-
-
 
   for (zlno_t lclRow = 0; lclRow < numMyElements; ++lclRow) {
     const zgno_t gblRow = map->getGlobalElement (lclRow);
@@ -155,8 +113,6 @@ void zoltan_partition_problem(
   }
   TpetraCrsGraph->fillComplete ();
 
-//  return;
-
   RCP<const tcrsGraph_t> const_data = rcp_const_cast<const tcrsGraph_t>(TpetraCrsGraph);
   typedef Tpetra::MultiVector<zscalar_t, zlno_t, zgno_t, znode_t> tMVector_t;
   typedef Zoltan2::XpetraCrsGraphAdapter<tcrsGraph_t, tMVector_t> adapter_t;
@@ -165,7 +121,6 @@ void zoltan_partition_problem(
   //for now no edge weights, and no vertex weights.
   //ia->setVertexWeights(vtx_weights[i],vtx_weightStride[i],i);
   //ia->setEdgeWeights(edge_weights[i],edge_weightStride[i],i);
-
 
   /***********************************SET COORDINATES*********************/
   const int coord_dim = *coord_dimension;
@@ -332,32 +287,36 @@ void zoltan_map_problem(
   typedef int part_t;
   typedef double zscalar_t;
 
-
-
   typedef Tpetra::Map<>::node_type znode_t;
   typedef Tpetra::Map<zlno_t, zgno_t, znode_t> map_t;
   size_t numGlobalCoords = *nelem;
 
-
   Teuchos::RCP<const Teuchos::Comm<int> > tcomm =  Teuchos::createSerialComm<int>();
   Teuchos::RCP<const Teuchos::Comm<int> > global_comm =
       Teuchos::RCP<const Teuchos::Comm<int> > (new Teuchos::MpiComm<int> (comm));
-
 
   Teuchos::ParameterList problemParams;
   Teuchos::RCP<Zoltan2::Environment> env (new Zoltan2::Environment(problemParams, global_comm));
   RCP<Zoltan2::TimerManager> timer(new Zoltan2::TimerManager(global_comm, &std::cout, Zoltan2::MACRO_TIMERS));
   env->setTimer(timer);
 
-
   env->timerStart(Zoltan2::MACRO_TIMERS, "TpetraGraphCreate");
   RCP<const map_t> map = rcp (new map_t (numGlobalCoords, 0, tcomm));
 
-  typedef Tpetra::CrsGraph<zlno_t, zgno_t, znode_t> tcrsGraph_t;
-  RCP<tcrsGraph_t> TpetraCrsGraph(new tcrsGraph_t (map, 0));
-
   const zlno_t numMyElements = map->getNodeNumElements ();
   const zgno_t myBegin = map->getGlobalElement (0);
+
+  size_t maxRowInd = 0;
+  for (zlno_t lclRow = 0; lclRow < numMyElements; ++lclRow) {
+    const zgno_t gblRow = map->getGlobalElement (lclRow);
+    zgno_t begin = xadj[gblRow];
+    zgno_t end = xadj[gblRow + 1];
+
+    maxRowInd = (end - begin > maxRowInd) ? end - begin : maxRowInd;
+  }
+
+  typedef Tpetra::CrsGraph<zlno_t, zgno_t, znode_t> tcrsGraph_t;
+  RCP<tcrsGraph_t> TpetraCrsGraph(new tcrsGraph_t (map, maxRowInd, Tpetra::StaticProfile));
 
   for (zlno_t lclRow = 0; lclRow < numMyElements; ++lclRow) {
     const zgno_t gblRow = map->getGlobalElement (lclRow);
@@ -367,6 +326,7 @@ void zoltan_map_problem(
     TpetraCrsGraph->insertGlobalIndices(gblRow, indices);
   }
   TpetraCrsGraph->fillComplete ();
+
   env->timerStop(Zoltan2::MACRO_TIMERS, "TpetraGraphCreate");
 
   env->timerStart(Zoltan2::MACRO_TIMERS, "AdapterCreate");
@@ -412,10 +372,6 @@ void zoltan_map_problem(
   /***********************************SET COORDINATES*********************/
 
   //int *parts = result_parts;
-
-
-
-
 
   zgno_t num_map_task = global_comm->getSize();
   //partitioning performed using sf curve, or metis and so on.
@@ -513,11 +469,20 @@ void zoltan_mapping_problem(
   env->timerStart(Zoltan2::MACRO_TIMERS, "TpetraGraphCreate");
   RCP<const map_t> map = rcp (new map_t (numGlobalCoords, 0, tcomm));
 
-  typedef Tpetra::CrsGraph<zlno_t, zgno_t, znode_t> tcrsGraph_t;
-  RCP<tcrsGraph_t> TpetraCrsGraph(new tcrsGraph_t (map, 0));
-
   const zlno_t numMyElements = map->getNodeNumElements ();
   const zgno_t myBegin = map->getGlobalElement (0);
+
+  size_t maxRowInd = 0;
+  for (zlno_t lclRow = 0; lclRow < numMyElements; ++lclRow) {
+    const zgno_t gblRow = map->getGlobalElement (lclRow);
+    zgno_t begin = xadj[gblRow];
+    zgno_t end = xadj[gblRow + 1];
+
+    maxRowInd = (end - begin > maxRowInd) ? end - begin : maxRowInd;
+  }
+
+  typedef Tpetra::CrsGraph<zlno_t, zgno_t, znode_t> tcrsGraph_t;
+  RCP<tcrsGraph_t> TpetraCrsGraph(new tcrsGraph_t (map, maxRowInd, Tpetra::StaticProfile));
 
   for (zlno_t lclRow = 0; lclRow < numMyElements; ++lclRow) {
     const zgno_t gblRow = map->getGlobalElement (lclRow);
@@ -646,29 +611,20 @@ void zoltan_mapping_problem(
 
   env->timerStop(Zoltan2::MACRO_TIMERS, "MappingProblemCreate");
 
-//  serial_map_problem.solve(true);
+  serial_map_problem.solve(true);
 
-//  Zoltan2::MappingSolution<adapter_t> *msoln3 = serial_map_problem.getSolution();
-//  int *parts =  (int *)msoln3->getPartListView();
+  Zoltan2::MappingSolution<adapter_t> *msoln3 = serial_map_problem.getSolution();
+  int *parts =  (int *)msoln3->getPartListView();
 
-  int *parts = (int *)partitioning_solution.getPartListView();
+//  int *parts = (int *)partitioning_solution.getPartListView();
 
   //timer->printAndResetToZero();
+//  typedef Zoltan2::EvaluatePartition<adapter_t> qualityp_t;
+//  typedef Zoltan2::EvaluateMapping<adapter_t> qualitym_t;
 
-  //then shift the results for fortran base.
-//  const int fortran_shift = 1;
-//  for (zlno_t lclRow = 0; lclRow < numMyElements; ++lclRow) {
-//    int proc = parts[lclRow];
-//    result_parts[lclRow] = proc + fortran_shift;
-//  }
-
-
-  typedef Zoltan2::EvaluatePartition<adapter_t> qualityp_t;
-  typedef Zoltan2::EvaluateMapping<adapter_t> qualitym_t;
-
-
+/*
   // Partitioning Solution, Partitioning Evaluation
-/*  Teuchos::RCP<qualityp_t> metricObject_part =
+  Teuchos::RCP<qualityp_t> metricObject_part =
       rcp(new qualityp_t(ia.getRawPtr(),
                         &problemParams,
 //                        global_comm,
@@ -679,7 +635,7 @@ void zoltan_mapping_problem(
     std::cout << "\nQuality of Default: \n";
     metricObject_part->printMetrics(std::cout);
   }
-*/
+
   // Partitioning Solution, Mapping Evaluation
   Teuchos::RCP<qualitym_t> metricObject_premap =
       rcp(new qualitym_t(ia.getRawPtr(),
@@ -695,7 +651,7 @@ void zoltan_mapping_problem(
 
 
   // Mapping Solution, Mapping Evaluation
-/*  Teuchos::RCP<qualitym_t> metricObject_map =
+  Teuchos::RCP<qualitym_t> metricObject_map =
       rcp(new qualitym_t(ia.getRawPtr(),
                         &problemParams,
                         global_comm,
@@ -714,18 +670,6 @@ void zoltan_mapping_problem(
     int proc = parts[lclRow];
     result_parts[lclRow] = proc + fortran_shift;
   }
-
-
-
-
-/*
-  typedef Zoltan2::EvaluateMapping<adapter_t> quality_t;
-  Teuchos::RCP<quality_t> metricObject_1 = rcp(new quality_t(ia.getRawPtr(),&problemParams,tcomm,msoln3,
-      serial_map_problem.getMachine().getRawPtr()));
-  if (global_comm->getRank() == 0){
-    metricObject_1->printMetrics(std::cout);
-  }
-*/
 }
 
 
