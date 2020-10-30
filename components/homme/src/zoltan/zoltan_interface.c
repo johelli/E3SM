@@ -85,12 +85,6 @@ void zoltanpart_(int *nelem, int *xadj,int *adjncy,double *adjwgt,double *vwgt, 
   }
 #endif
 
-//  c_comm->barrier();
-
-//  printf("\nAbout to enter part problem\n");
-
-//  c_comm->barrier();
-
   if (*partmethod > 5 && *partmethod <= 22){
     zoltan_partition_problem(
         nelem, xadj,adjncy,adjwgt,vwgt,
@@ -99,8 +93,6 @@ void zoltanpart_(int *nelem, int *xadj,int *adjncy,double *adjwgt,double *vwgt, 
         xcoord, ycoord, zcoord, coord_dimension,
         result_parts, partmethod, mappingmethod);
   }
-
-//  printf("\nEnd part problem\n");
 
   if (*partmethod == 5 || *mappingmethod > 1){
 #ifdef COMPARESOLUTIONS
@@ -133,15 +125,6 @@ void zoltanpart_(int *nelem, int *xadj,int *adjncy,double *adjwgt,double *vwgt, 
     }
     free(result_parts_copy);
 #endif
-
-    int mype2;
-    MPI_Comm_rank(c_comm, &mype2);
-
-    if (mype2 == 0) {
-        for (int i = 0; i < *nelem; ++i) {
-            printf ("i: %d result_part: %d\n", i, result_parts[i]);
-        }
-    }
 
   }
 #else
